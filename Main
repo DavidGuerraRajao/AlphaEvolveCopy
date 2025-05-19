@@ -1,0 +1,86 @@
+from langchain_ollama import OllamaLLM
+import subprocess
+import os
+import re
+
+parent = OllamaLLM(model="cogito:32b")
+
+def min_index(arr):
+    h = min(arr)
+    for i in range(len(arr)):
+        if arr[i] == h:
+            return i
+
+#LLM Code Generator:
+def CodeGen(c,template):
+    attempts = []
+    c = 3
+    for i in range(c):
+        output =  parent.invoke(template)
+        attempts.append(re.sub(r"```python(.*?)```|.*?", r'\1', output, flags=re.DOTALL))
+        print(f"Slop {i}:\n{attempts[i]}")
+    return attempts
+
+#Evaluetor
+def Eval(attempts,c):
+    time = []
+    codes = []
+    for i in range(c):
+        with open("attempts.py", "w", encoding='utf-8') as f:
+            f.write(f"""
+import time
+start_time = time.time()
+
+{attempts[i]}
+
+end_time = time.time()
+print("/time:", end_time - start_time, "time/")""")
+        result = subprocess.run(["python", "attempts.py", "arg1", "arg2"], capture_output=True, text=True)
+        if result.stderr == "" or attempts[i] != "":
+            time.append(re.sub(r"/time:(.*?)time/|.*?", r'\1', result.stdout, flags=re.DOTALL))
+            codes.append(attempts[i])
+            print(re.sub(r"/time:(.*?)time/|.*?", r'\1', result.stdout, flags=re.DOTALL))
+
+    with open("attempts.py", "w", encoding='utf-8') as f:
+        f.write(codes[min_index(time)])
+    return codes[min_index(time)] ,time
+
+program_database = []
+current_performance = 0.3550727367401123
+p = [0.3550727367401123]
+for i in range(50):
+    c = 3
+    with open("attempts.py", "r", encoding='utf-8') as f:
+        code = f.read()
+
+    template = f"""
+    Act as an expert Python optimizer.
+    The following Python code currently executes in {p[-1]} seconds:
+
+    {code}
+
+    Your task is to modify this code to make it run faster.
+    Provide only the modified Python code block.
+    """
+
+    GenCode = CodeGen(c,template)
+    code, times = Eval(GenCode, c)
+    if min(times) != '':
+        current_performance = float(min(times))
+
+    if p[-1] < current_performance:
+        with open("attempts.py", "w", encoding='utf-8') as f:
+            f.write(code)
+        p.append(current_performance)
+        program_database.append({'time': current_performance, 'generation': i})
+
+    current_performance = p[-1]
+
+with open("Fittest.py", "w", encoding='utf-8') as f:
+    f.write(f"""{code}""")
+
+result = subprocess.run(["python", "Fittest.py", "arg1", "arg2"], capture_output=True, text=True)
+print("Output:", result.stdout)
+print("\nGenerational Performance:\n")
+for i in range(len(program_database)):
+    print(program_database[i])
